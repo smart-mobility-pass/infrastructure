@@ -1,0 +1,138 @@
+{
+    "id": "smart-mobility",
+    "realm": "smart-mobility",
+    "displayName": "Smart Mobility Pass",
+    "enabled": true,
+    "sslRequired": "external",
+    "registrationAllowed": true,
+    "loginWithEmailAllowed": true,
+    "duplicateEmailsAllowed": false,
+    "resetPasswordAllowed": true,
+    "editUsernameAllowed": true,
+    "bruteForceProtected": true,
+    "clients": [
+        {
+            "clientId": "smart-mobility-app",
+            "name": "Smart Mobility Mobile App",
+            "enabled": true,
+            "alwaysDisplayInConsole": false,
+            "clientAuthenticatorType": "client-secret",
+            "redirectUris": [
+                "*"
+            ],
+            "webOrigins": [
+                "*"
+            ],
+            "notBefore": 0,
+            "bearerOnly": false,
+            "consentRequired": false,
+            "standardFlowEnabled": true,
+            "implicitFlowEnabled": false,
+            "directAccessGrantsEnabled": true,
+            "serviceAccountsEnabled": false,
+            "publicClient": true,
+            "frontchannelLogout": false,
+            "protocol": "openid-connect",
+            "attributes": {
+                "oauth2.device.authorization.grant.enabled": "false",
+                "use.refresh.tokens": "true",
+                "oidc.ciba.grant.enabled": "false",
+                "client.secret.creation.time": "1709219323",
+                "backchannel.logout.session.required": "true",
+                "backchannel.logout.revoke.offline.tokens": "false"
+            },
+            "authenticationFlowBindingOverrides": {},
+            "fullScopeAllowed": true,
+            "nodeReRegistrationTimeout": -1,
+            "defaultClientScopes": [
+                "web-origins",
+                "acr",
+                "roles",
+                "profile",
+                "email"
+            ],
+            "optionalClientScopes": [
+                "address",
+                "phone",
+                "offline_access",
+                "microprofile-jwt"
+            ],
+            "protocolMappers": [
+                {
+                    "name": "realm roles",
+                    "protocol": "openid-connect",
+                    "protocolMapper": "oidc-usermodel-realm-role-mapper",
+                    "consentRequired": false,
+                    "config": {
+                        "multivalued": "true",
+                        "id.token.claim": "true",
+                        "access.token.claim": "true",
+                        "claim.name": "realm_access.roles",
+                        "jsonType.label": "json"
+                    }
+                },
+                {
+                    "name": "client roles",
+                    "protocol": "openid-connect",
+                    "protocolMapper": "oidc-usermodel-client-role-mapper",
+                    "consentRequired": false,
+                    "config": {
+                        "multivalued": "true",
+                        "id.token.claim": "true",
+                        "access.token.claim": "true",
+                        "claim.name": "resource_access.${client_id}.roles",
+                        "jsonType.label": "json"
+                    }
+                }
+            ]
+        }
+    ],
+    "users": [
+        {
+            "id": "f5e93c83-047b-4830-9b37-25e1df1176b6",
+            "createdTimestamp": 1709219400000,
+            "username": "jeandupont",
+            "enabled": true,
+            "totp": false,
+            "emailVerified": true,
+            "firstName": "Jean",
+            "lastName": "Dupont",
+            "email": "jean.dupont@smartmobility.com",
+            "credentials": [
+                {
+                    "type": "password",
+                    "value": "test",
+                    "temporary": false
+                }
+            ],
+            "disableableCredentialTypes": [],
+            "requiredActions": [],
+            "realmRoles": [
+                "default-roles-smart-mobility",
+                "ROLE_USER"
+            ],
+            "notBefore": 0,
+            "groups": []
+        }
+    ],
+    "roles": {
+        "realm": [
+            {
+                "name": "ROLE_USER",
+                "description": "Standard User Role",
+                "composite": false,
+                "clientRole": false,
+                "containerId": "smart-mobility",
+                "attributes": {}
+            },
+            {
+                "name": "ROLE_ADMIN",
+                "description": "Administrator Role",
+                "composite": false,
+                "clientRole": false,
+                "containerId": "smart-mobility",
+                "attributes": {}
+            }
+        ]
+    }
+}

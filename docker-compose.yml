@@ -1,0 +1,277 @@
+services:
+  # ==========================================
+  # Infrastructure Services (Starting first)
+  # ==========================================
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_PASSWORD: root
+    ports:
+      - "3307:3307"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - smart-mobility-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - smart-mobility-network
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: rabbitmq-diagnostics check_port_connectivity
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mailhog:
+    image: mailhog/mailhog
+    container_name: mailhog
+    ports:
+      - "8025:8025"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "sh", "-c", "nc -z localhost 8025"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smart-mobility-network
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:23.0
+    container_name: keycloak
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    command: start-dev --import-realm
+    ports:
+      - "8080:8080"
+    depends_on:
+      mailhog:
+        condition: service_healthy
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+      - ./realm-export.json:/opt/keycloak/data/import/realm-export.json
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080; echo $?"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - smart-mobility-network
+
+  zipkin:
+    image: openzipkin/zipkin
+    container_name: zipkin
+    ports:
+      - "9411:9411"
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "9411"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - smart-mobility-network
+
+  # Visualisation MySQL (Projets)
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: phpmyadmin
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "8083:80"
+    depends_on:
+      zipkin:
+        condition: service_healthy
+    networks:
+      - smart-mobility-network
+    
+
+  # ==========================================
+  # Core Spring Cloud Services (Sequential)
+  # ==========================================
+  config-server:
+    build: ./smart-mobility-config-server
+    container_name: smart-mobility-config-server
+    environment:
+      - SPRING_PROFILES_ACTIVE=native
+      - SPRING_CLOUD_CONFIG_SERVER_NATIVE_SEARCH_LOCATIONS=file:///config/
+    volumes:
+      - ./smart-mobility-configuration:/config
+    ports:
+      - "8888:8888"
+    depends_on:
+      zipkin:
+        condition: service_healthy
+    networks:
+      - smart-mobility-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  eureka-server:
+    build: ./smart-mobility-eureka
+    container_name: smart-mobility-eureka
+    ports:
+      - "8761:8761"
+    depends_on:
+      config-server:
+        condition: service_healthy
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - CONFIG_SERVER_URL=config-server
+    networks:
+      - smart-mobility-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8761/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  gateways:
+    build: ./smart-mobility-gateways
+    container_name: smart-mobility-gateways
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - CONFIG_SERVER_URL=config-server
+    ports:
+      - "8765:8765"
+    depends_on:
+      trip-management-service:
+        condition: service_healthy
+    networks:
+      - smart-mobility-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8765/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ==========================================
+  # Business Microservices (Sequential)
+  # ==========================================
+  user-service:
+    build: ./smart-mobility-user-service
+    container_name: smart-mobility-user-service
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - CONFIG_SERVER_URL=config-server
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+    networks:
+      - smart-mobility-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8103/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  billing-service:
+    build: ./smart-mobility-billing-service
+    container_name: smart-mobility-billing-service
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - CONFIG_SERVER_URL=config-server
+    depends_on:
+      user-service:
+        condition: service_healthy
+    networks:
+      - smart-mobility-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8403/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  pricing-service:
+    build: ./smart-mobility-pricing-service
+    container_name: smart-mobility-pricing-service
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - CONFIG_SERVER_URL=config-server
+    depends_on:
+      billing-service:
+        condition: service_healthy
+    networks:
+      - smart-mobility-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8303/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  trip-management-service:
+    build: ./smart-mobility-trip-management
+    container_name: smart-mobility-trip-management
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - CONFIG_SERVER_URL=config-server
+    depends_on:
+      pricing-service:
+        condition: service_healthy
+    networks:
+      - smart-mobility-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8203/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  notification-service:
+    build: ./smart-mobility-notification-service
+    container_name: smart-mobility-notification-service
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - CONFIG_SERVER_URL=config-server
+    depends_on:
+      trip-management-service:
+        condition: service_healthy
+    networks:
+      - smart-mobility-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8503/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+networks:
+  smart-mobility-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  rabbitmq_data:
+  keycloak_data:
